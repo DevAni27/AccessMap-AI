@@ -1,0 +1,7 @@
+# Day 1: just enough to run the server.
+# We'll add sqlalchemy/psycopg/httpx etc. on Day 2 when we need them —
+# installing things only when you're about to use them keeps it clear
+# what each dependency is actually for.
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-dotenv==1.0.1
