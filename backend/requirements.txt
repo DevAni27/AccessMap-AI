@@ -1,7 +1,11 @@
-# Day 1: just enough to run the server.
-# We'll add sqlalchemy/psycopg/httpx etc. on Day 2 when we need them —
-# installing things only when you're about to use them keeps it clear
-# what each dependency is actually for.
+# Day 1
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-dotenv==1.0.1
+
+# Day 2: database
+sqlalchemy==2.0.35       # ORM — talk to Postgres as Python objects instead of raw SQL
+psycopg2-binary==2.9.9   # the actual Postgres driver SQLAlchemy uses under the hood
+geoalchemy2==0.15.2      # adds PostGIS geography/geometry column types to SQLAlchemy
+pgvector==0.3.5          # adds pgvector embedding column types to SQLAlchemy
+pydantic-settings==2.5.2 # typed config from environment variables / .env

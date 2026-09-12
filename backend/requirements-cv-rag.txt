@@ -1,0 +1,15 @@
+# Teammate's dependencies — kept in a separate file from requirements.txt
+# on purpose, so both of you can add packages without git-conflicting on
+# the same file while working in parallel. These get merged into one
+# requirements.txt at integration time.
+
+pydantic==2.9.2
+ultralytics==8.3.0          # YOLOv8n — object detection
+opencv-python==4.10.0.84    # image preprocessing
+sentence-transformers==3.2.1  # embeddings for RAG (all-MiniLM-L6-v2)
+google-generativeai==0.8.3  # Gemini API — vision fallback + LLM grounding
+pdfplumber==0.11.4          # parsing the Harmonised Guidelines PDF
+numpy==2.1.2
+pillow==10.4.0
+requests==2.32.3
+python-dotenv==1.0.1
