@@ -9,3 +9,5 @@ psycopg2-binary==2.9.9   # the actual Postgres driver SQLAlchemy uses under the 
 geoalchemy2==0.15.2      # adds PostGIS geography/geometry column types to SQLAlchemy
 pgvector==0.3.5          # adds pgvector embedding column types to SQLAlchemy
 pydantic-settings==2.5.2 # typed config from environment variables / .env
+
+google-generativeai==0.8.3   # Gemini API client — LLM category fallback, and later report generation

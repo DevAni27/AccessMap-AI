@@ -11,12 +11,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routers import locations
 
 app = FastAPI(
     title="AccessMap AI",
     description="Agentic RAG-based accessibility assessment and inclusive place recommendation system",
     version="0.1.0",
 )
+
+app.include_router(locations.router)
 
 
 @app.get("/")
