@@ -16,7 +16,7 @@ from app.database import engine, get_db
 from app.main import app
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def _schema_is_current():
     columns = {c["name"] for c in inspect(engine).get_columns("locations")} \
         if inspect(engine).has_table("locations") else set()
@@ -28,7 +28,7 @@ def _schema_is_current():
 
 
 @pytest.fixture
-def db():
+def db(_schema_is_current):
     connection = engine.connect()
     outer = connection.begin()
     # Commits inside the app only release a SAVEPOINT, so the outer

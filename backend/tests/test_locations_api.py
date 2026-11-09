@@ -1,4 +1,7 @@
-"""API tests for /locations — real PostGIS, rolled-back transaction, faked agents."""
+"""API tests for /locations — real PostGIS, rolled-back transaction, faked agents.
+
+Each test only looks at rows it created itself (fake osm_refs starting with
+"TEST-"), so it passes whether or not the database already contains data."""
 
 import itertools
 
@@ -12,7 +15,7 @@ from app.routers import locations as router_module
 _ids = itertools.count(1)
 
 
-def make_resolved(osm_ref="W100", name="Phoenix Marketcity", lat=18.5620429, lon=73.916663, **kw):
+def make_resolved(osm_ref="TEST-W100", name="Phoenix Marketcity", lat=18.5620429, lon=73.916663, **kw):
     return LocationResolutionOutput(
         location_id=f"loc_test{next(_ids):06d}",   # fresh id per resolve, like the real agent
         name=name, category=kw.get("category", "mall"),
@@ -33,6 +36,12 @@ def fake_resolver(monkeypatch):
     return state
 
 
+def stored_with_ref(db, osm_ref):
+    """Rows for one (fake) place. Tests never assume the table is empty:
+    a development database may already hold real, manually added locations."""
+    return db.query(Location).filter(Location.osm_ref == osm_ref).count()
+
+
 def post_location(client, query="phoenix"):
     return client.post("/locations", json={"query": query})
 
@@ -41,7 +50,7 @@ def test_create_returns_201_and_fills_geom_from_lat_lon(client, db, fake_resolve
     r = post_location(client)
     assert r.status_code == 201
     body = r.json()
-    assert body["osm_ref"] == "W100" and body["category"] == "mall"
+    assert body["osm_ref"] == "TEST-W100" and body["category"] == "mall"
 
     lon, lat = db.execute(
         text("SELECT ST_X(geom::geometry), ST_Y(geom::geometry) FROM locations WHERE id = :i"),
@@ -55,24 +64,24 @@ def test_same_place_twice_returns_existing_record(client, db, fake_resolver):
     second = post_location(client, "phoenix mall viman nagar")      # different phrasing
     assert (first.status_code, second.status_code) == (201, 200)
     assert second.json()["location_id"] == first.json()["location_id"]
-    assert db.query(Location).count() == 1
+    assert stored_with_ref(db, "TEST-W100") == 1
 
 
 def test_different_places_get_different_rows(client, db, fake_resolver):
-    fake_resolver["kwargs"] = {"osm_ref": "W100"}
+    fake_resolver["kwargs"] = {"osm_ref": "TEST-W100"}
     a = post_location(client)
-    fake_resolver["kwargs"] = {"osm_ref": "N200", "name": "Ruby Hall Clinic", "category": "hospital"}
+    fake_resolver["kwargs"] = {"osm_ref": "TEST-N200", "name": "Ruby Hall Clinic", "category": "hospital"}
     b = post_location(client)
     assert (a.status_code, b.status_code) == (201, 201)
     assert a.json()["location_id"] != b.json()["location_id"]
-    assert db.query(Location).count() == 2
+    assert stored_with_ref(db, "TEST-W100") == stored_with_ref(db, "TEST-N200") == 1
 
 
 def test_places_without_osm_ref_are_never_merged(client, db, fake_resolver):
     fake_resolver["kwargs"] = {"osm_ref": None}
-    post_location(client)
-    post_location(client)
-    assert db.query(Location).count() == 2     # no identity -> can't prove they're the same
+    ids = {post_location(client).json()["location_id"] for _ in range(2)}
+    assert len(ids) == 2                        # no identity -> can't prove they're the same place
+    assert db.query(Location).filter(Location.id.in_(ids)).count() == 2
 
 
 def test_race_between_check_and_insert_returns_existing_record(client, db, fake_resolver, monkeypatch):
@@ -88,7 +97,7 @@ def test_race_between_check_and_insert_returns_existing_record(client, db, fake_
     second = post_location(client)
     assert second.status_code == 200
     assert second.json()["location_id"] == first.json()["location_id"]
-    assert db.query(Location).count() == 1
+    assert stored_with_ref(db, "TEST-W100") == 1
 
 
 def test_resolution_errors_map_to_http_codes(client, monkeypatch):
@@ -108,8 +117,8 @@ def test_list_and_get_work_when_geom_is_set(client, fake_resolver):
     created = post_location(client).json()
     listing = client.get("/locations")
     assert listing.status_code == 200
-    assert listing.json() == [created]
-    assert "geom" not in listing.json()[0]
+    assert created in listing.json()            # other rows may exist in a dev database
+    assert all("geom" not in row for row in listing.json())
     assert client.get(f"/locations/{created['location_id']}").json() == created
     assert client.get("/locations/loc_missing").status_code == 404
 

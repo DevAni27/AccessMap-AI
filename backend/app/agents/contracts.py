@@ -17,8 +17,8 @@ IMPORTANT — embedding dimension lock-in:
   in the database column. Don't change this without updating both sides.
 """
 
-from typing import Optional
-from pydantic import BaseModel
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
 
 
 # ── Location Resolution Agent (Pranshu, Day 4-5) ──────────────────────────
@@ -56,6 +56,33 @@ class WebEvidenceOutput(BaseModel):
     osm_tags: list[OSMTag]
     image_urls: list[str]           # collected from Wikimedia / official sites
     text_snippets: list[str]        # scraped/searched accessibility-related text
+
+
+# ── Text Analysis Agent (Pranshu) ──────────────────────────────────────────
+
+class Observation(BaseModel):
+    """One piece of evidence about one feature, from one source. Scoring
+    combines the observations from all sources; a feature with no
+    observations is "not verified" — absence of evidence is never a finding."""
+    feature: str                    # a key of app.features.FEATURES
+    status: Literal["detected", "not_detected"]
+    confidence: float = Field(ge=0.0, le=1.0)   # how sure we are the source states this (not how reliable the source is)
+    source: Literal["osm", "text", "image"]
+    evidence: str                   # OSM tag like "wheelchair=yes", or a verbatim quote from the source text
+
+
+class TextAnalysisInput(BaseModel):
+    location_id: str
+    location_name: str
+    category: str
+    osm_tags: list[OSMTag] = []
+    text_snippets: list[str] = []
+
+
+class TextAnalysisOutput(BaseModel):
+    location_id: str
+    observations: list[Observation]
+    warnings: list[str] = []        # e.g. "text analysis skipped: Gemini unavailable" — shown, never hidden
 
 
 # ── Image Analysis Agent (Teammate, builds this) ───────────────────────────
