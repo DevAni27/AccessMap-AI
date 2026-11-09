@@ -7,6 +7,7 @@ venv/
 # Secrets — never commit this, it'll hold your DB connection string and API keys
 .env
 
+
 # Node (for the frontend, later)
 node_modules/
 .next/
