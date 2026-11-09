@@ -34,6 +34,7 @@ class LocationResolutionOutput(BaseModel):
     latitude: float
     longitude: float
     address: Optional[str] = None
+    osm_ref: Optional[str] = None
 
 
 # ── Web Evidence Retrieval Agent (Pranshu, Day 6-7) ────────────────────────

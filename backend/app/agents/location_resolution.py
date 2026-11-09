@@ -12,6 +12,7 @@ disallowed — that's why we set one below rather than using requests'
 default).
 """
 
+# FIND
 import time
 import uuid
 
@@ -22,6 +23,22 @@ from app.llm_client import generate_text
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "AccessMapAI/0.1 (semester project; contact: nike.dhingra27@gmail.com)"
+
+# REPLACE WITH
+import uuid
+
+import requests
+
+from app.agents.contracts import LocationResolutionInput, LocationResolutionOutput
+from app.http_utils import USER_AGENT, nominatim_throttle
+from app.llm_client import generate_text
+
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+# Nominatim reports an object's kind as "node"/"way"/"relation". osm_ref is
+# that kind's one-letter prefix + the OSM id (way 123 -> "W123"); it is the
+# key we use to avoid storing the same real-world place twice.
+_OSM_TYPE_PREFIX = {"node": "N", "way": "W", "relation": "R"}
 
 # Project scope is Pune only. Constraining Nominatim's search to Pune's
 # bounding box eliminates the most common ambiguity: a generic name (e.g.
@@ -80,7 +97,7 @@ CATEGORY_MAP = {
     ("leisure", "park"): "tourist_attraction",
 }
 
-_last_request_time = 0.0
+
 
 def _classify_category_with_llm(name: str, address: str | None, osm_class: str, osm_type: str) -> str:
     """
@@ -111,26 +128,25 @@ Use "unknown" only if you genuinely cannot tell from the name and address."""
     return raw if raw in VALID_CATEGORIES else "unknown"
 
 
-def _throttle():
-    """Nominatim's usage policy caps public use at 1 request/second.
-    This makes that structurally true rather than relying on remembering
-    to add delays at every call site."""
-    global _last_request_time
-    elapsed = time.time() - _last_request_time
-    if elapsed < 1.0:
-        time.sleep(1.0 - elapsed)
-    _last_request_time = time.time()
+def _build_osm_ref(result: dict) -> str | None:
+    """Stable OpenStreetMap identity for a Nominatim result, e.g. "W123456".
+    Returns None if Nominatim gave no usable id."""
+    prefix = _OSM_TYPE_PREFIX.get(result.get("osm_type"))
+    osm_id = result.get("osm_id")
+    if prefix is None or osm_id is None:
+        return None
+    return f"{prefix}{osm_id}"
 
 
 def resolve_location(input: LocationResolutionInput) -> LocationResolutionOutput:
-    _throttle()
+    nominatim_throttle.wait()
 
     response = requests.get(
         NOMINATIM_URL,
         params={
             "q": input.query,
             "format": "jsonv2",
-            "limit": 1,
+            "limit": 5,
             "addressdetails": 1,
             "viewbox": PUNE_VIEWBOX,
             "bounded": 1,
@@ -171,6 +187,7 @@ def resolve_location(input: LocationResolutionInput) -> LocationResolutionOutput
         latitude=float(result["lat"]),
         longitude=float(result["lon"]),
         address=result.get("display_name"),
+        osm_ref=_build_osm_ref(result),
     )
 
 

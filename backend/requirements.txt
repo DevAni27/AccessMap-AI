@@ -11,3 +11,7 @@ pgvector==0.3.5          # adds pgvector embedding column types to SQLAlchemy
 pydantic-settings==2.5.2 # typed config from environment variables / .env
 
 google-generativeai==0.8.3   # Gemini API client — LLM category fallback, and later report generation
+
+# Day 4-5: location search + web evidence
+requests==2.34.2
+ddgs==9.16.0
