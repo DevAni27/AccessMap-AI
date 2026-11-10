@@ -6,12 +6,14 @@ feature gets wired in here via an `app.include_router(...)` call —
 see routers/locations.py once that exists (Day 8-9).
 """
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.routers import locations
+from app.routers import assessments, locations
+from app.services.errors import ServiceError
 
 app = FastAPI(
     title="AccessMap AI",
@@ -20,6 +22,13 @@ app = FastAPI(
 )
 
 app.include_router(locations.router)
+app.include_router(assessments.router)
+
+
+@app.exception_handler(ServiceError)
+def service_error_handler(_request: Request, error: ServiceError):
+    """Services raise ServiceError; clients get the usual {"detail": ...} body."""
+    return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
 
 
 @app.get("/")

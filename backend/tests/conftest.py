@@ -25,6 +25,17 @@ def _schema_is_current():
             "Database schema is out of date. Run `python scripts/reset_db.py` first.",
             returncode=2,
         )
+    evidence_columns = {c["name"] for c in inspect(engine).get_columns("evidence")}
+    if "source_status" not in evidence_columns:
+        pytest.exit(
+            "The evidence table lacks source_status. Run `python scripts/create_tables.py` first.",
+            returncode=2,
+        )
+    if not inspect(engine).has_table("assessments"):
+        pytest.exit(
+            "The assessments table is missing. Run `python scripts/create_tables.py` first.",
+            returncode=2,
+        )
 
 
 @pytest.fixture
@@ -48,4 +59,4 @@ def client(db):
     try:
         yield TestClient(app)
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.clear()

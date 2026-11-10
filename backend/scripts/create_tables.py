@@ -26,8 +26,13 @@ def create_tables() -> None:
         # Needed for the Geography column; harmless if already enabled.
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
     Base.metadata.create_all(bind=engine)
+    # create_all never alters existing tables; columns added after a table
+    # was first created are added here (idempotent, keeps existing data).
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE evidence ADD COLUMN IF NOT EXISTS source_status JSON"))
 
 
 if __name__ == "__main__":
     create_tables()
     print("Tables created successfully.")
+

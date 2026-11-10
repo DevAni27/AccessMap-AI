@@ -8,23 +8,10 @@ category.
 Uses Nominatim (OpenStreetMap's free geocoding API) — no API key needed,
 but their usage policy requires max 1 request/second and a real
 User-Agent identifying the app (their default-library-UA is explicitly
-disallowed — that's why we set one below rather than using requests'
-default).
+disallowed — that's why we set one in app/http_utils.py rather than using
+requests' default).
 """
 
-# FIND
-import time
-import uuid
-
-import requests
-
-from app.agents.contracts import LocationResolutionInput, LocationResolutionOutput
-from app.llm_client import generate_text
-
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "AccessMapAI/0.1 (semester project; contact: nike.dhingra27@gmail.com)"
-
-# REPLACE WITH
 import uuid
 
 import requests
@@ -50,18 +37,8 @@ PUNE_VIEWBOX = "73.70,18.70,74.00,18.40"
 
 # Nominatim returns (class, type) tags. We map the ones we expect to see
 # for our 5 categories — anything unmapped falls back to "unknown" rather
-# than guessing wrong. Deliberately minimal for now: when we build the
-# seed script for the curated Pune dataset, we already know each
-# location's category and will pass it in directly instead of relying on
-# this inference.
-# OSM tags follow a documented, finite vocabulary (see wiki.openstreetmap.org/wiki/Map_features)
-# — unlike free-text search queries, this is a bounded mapping problem.
-# Still won't be perfect: OSM data quality varies place to place, especially
-# for how Indian malls get tagged. That's a real data limitation, not a
-# gap in this table — an LLM-based classifier (next up, post-review) is
-# the actual fix for that, since it can reason about a name/address even
-# when the OSM tags are missing or wrong.
-
+# than guessing wrong. When we seed the curated Pune dataset we already
+# know each location's category and pass it in directly.
 VALID_CATEGORIES = {"hospital", "mall", "restaurant", "college", "tourist_attraction"}
 
 CATEGORY_MAP = {
@@ -97,6 +74,30 @@ CATEGORY_MAP = {
     ("leisure", "park"): "tourist_attraction",
 }
 
+# Kinds of OSM object that are never the place a user means, but often
+# share its name: the metro station called "Ruby Hall Clinic" is not the
+# hospital. Used only when no candidate maps to one of our categories.
+NON_PLACE_CLASSES = {
+    "railway", "public_transport", "highway", "route", "waterway", "boundary",
+    "landuse", "natural", "aeroway", "place",
+}
+
+
+def choose_candidate(results: list[dict]) -> dict:
+    """Pick which Nominatim candidate is the place the user meant.
+
+    Nominatim ranks by name match and prominence, so an object of the wrong
+    KIND can come first (a metro station named after the hospital next to
+    it). We prefer, in order: the first candidate whose type maps to one of
+    our categories; else the first candidate that is not transport or
+    infrastructure; else simply the first."""
+    for result in results:
+        if (result.get("category"), result.get("type")) in CATEGORY_MAP:
+            return result
+    for result in results:
+        if result.get("category") not in NON_PLACE_CLASSES:
+            return result
+    return results[0]
 
 
 def _classify_category_with_llm(name: str, address: str | None, osm_class: str, osm_type: str) -> str:
@@ -115,8 +116,6 @@ Respond with exactly one word from this list, and nothing else:
 hospital, mall, restaurant, college, tourist_attraction, unknown
 
 Use "unknown" only if you genuinely cannot tell from the name and address."""
-
-    
 
     try:
         raw = generate_text(prompt).strip().lower()
@@ -159,30 +158,31 @@ def resolve_location(input: LocationResolutionInput) -> LocationResolutionOutput
 
     if not results:
         raise ValueError(f"Nominatim found no match for: {input.query!r} within Pune")
-    
+
+    result = choose_candidate(results)
     if len(results) > 1:
         print(f"[disambiguation] {len(results)} matches within Pune for {input.query!r} "
-              f"— using top-ranked: {results[0].get('display_name')}")
+              f"— using: {result.get('display_name')}")
 
-    result = results[0]
     osm_class = result.get("category", "")
     osm_type = result.get("type", "")
     category = CATEGORY_MAP.get((osm_class, osm_type), "unknown")
+    name = result.get("display_name", "").split(",")[0].strip() or input.query
     if category == "unknown":
         category = _classify_category_with_llm(
-            name=result.get("display_name", "").split(",")[0].strip() or input.query,
+            name=name,
             address=result.get("display_name"),
             osm_class=osm_class,
             osm_type=osm_type,
         )
-    
+
     # Our own stable id — used everywhere else in the pipeline instead of
     # OSM's id, so we're not coupled to a third party's identifiers.
     location_id = f"loc_{uuid.uuid4().hex[:12]}"
 
     return LocationResolutionOutput(
         location_id=location_id,
-        name=result.get("display_name", "").split(",")[0].strip() or input.query,
+        name=name,
         category=category,
         latitude=float(result["lat"]),
         longitude=float(result["lon"]),

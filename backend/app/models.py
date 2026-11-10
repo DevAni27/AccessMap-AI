@@ -6,7 +6,7 @@ from datetime import datetime
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
-    Column, Computed, DateTime, Float, ForeignKey, Integer, JSON, String,
+    Boolean, Column, Computed, DateTime, Float, ForeignKey, Integer, JSON, String,
 )
 
 from app.database import Base
@@ -57,4 +57,29 @@ class Evidence(Base):
     osm_tags = Column(JSON, nullable=True)       # list of {"key": ..., "value": ...}
     image_urls = Column(JSON, nullable=True)     # list of strings
     text_snippets = Column(JSON, nullable=True)  # list of strings
+    # What each source did, e.g. {"osm": "ok (looked up W1)", "web_text":
+    # "unavailable: ..."}. NULL on rows collected before this existed.
+    source_status = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Assessment(Base):
+    """
+    One row per finished assessment run of a location. The full report
+    (scores, observations, explanations, warnings) is stored as JSON so an
+    old assessment can be shown exactly as it was produced; the two scores
+    are duplicated into plain columns for cheap sorting/filtering later
+    (e.g. ranking nearby alternatives).
+
+    Only `complete` assessments (no agent failed or was skipped) are ever
+    served from cache.
+    """
+    __tablename__ = "assessments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    location_id = Column(String, ForeignKey("locations.id"), nullable=False, index=True)
+    overall_score = Column(Float, nullable=False)
+    confidence_score = Column(Float, nullable=False)
+    complete = Column(Boolean, nullable=False, default=True)
+    report = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

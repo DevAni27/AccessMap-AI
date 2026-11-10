@@ -44,6 +44,11 @@ class WebEvidenceInput(BaseModel):
     location_name: str
     latitude: float
     longitude: float
+    # OpenStreetMap identity of the place (e.g. "W53098668"). When given, tags
+    # are looked up on that exact object instead of "whatever is at these
+    # coordinates", which can be a different object (a metro station next to
+    # a hospital).
+    osm_ref: Optional[str] = None
 
 
 class OSMTag(BaseModel):
@@ -56,6 +61,10 @@ class WebEvidenceOutput(BaseModel):
     osm_tags: list[OSMTag]
     image_urls: list[str]           # collected from Wikimedia / official sites
     text_snippets: list[str]        # scraped/searched accessibility-related text
+    # What each source did: "osm", "web_text", "images" -> "ok..." or
+    # "unavailable: <why>". Lets the pipeline tell "searched, nothing there"
+    # (a finding) from "the search failed" (a warning, never cached).
+    source_status: dict[str, str] = {}
 
 
 # ── Text Analysis Agent (Pranshu) ──────────────────────────────────────────
@@ -151,19 +160,46 @@ class RAGVerificationOutput(BaseModel):
     explanations: list[GroundedExplanation]
 
 
-# ── Evidence Fusion & Scoring Agent (later, whoever picks it up) ──────────
+# ── Evidence Fusion & Scoring Agent (Pranshu, Part 2) ─────────────────────
+
+class ScoringInput(BaseModel):
+    location_id: str
+    category: str                   # location category (informational)
+    observations: list[Observation] # from every source: osm / text / image
+
+
+class FeatureAssessment(BaseModel):
+    """What the combined evidence says about ONE feature."""
+    feature: str                    # a key of app.features.FEATURES
+    label: str
+    polarity: Literal["benefit", "barrier"]
+    # uncertain = evidence exists but is weak or contradictory;
+    # not_verified = no evidence at all (never means "absent")
+    status: Literal["detected", "not_detected", "uncertain", "not_verified"]
+    probability: Optional[float] = None   # P(feature present) 0-1; None if not verified
+    confidence: float = 0.0               # 0-1: how much evidence backs the estimate
+    sources: list[str] = []               # e.g. ["osm", "text"]
+    evidence: list[str] = []              # "osm: wheelchair=yes", 'text: "ramps for entry"'
+
 
 class CategoryScore(BaseModel):
-    category: str                   # e.g. "step_free_entrance"
-    score: float                    # 0-100
-    weight: float                   # from the weighted table in the project doc
+    category: str                   # key of app.features.SCORING_CATEGORIES, e.g. "entrance"
+    label: str = ""
+    score: float                    # 0-100 (50 = neutral when nothing is known)
+    weight: float                   # share of the overall score
+    confidence: float = 0.0         # 0-1 evidence strength behind this score
+    assessed: bool = False          # False -> no evidence, score is a neutral placeholder
 
 
 class ScoringOutput(BaseModel):
     location_id: str
     overall_score: float            # 0-100
     confidence_score: float         # 0-100
+    evidence_level: Literal["insufficient", "low", "moderate", "high"] = "insufficient"
     category_scores: list[CategoryScore]
-    verified_features: list[str]
-    barrier_features: list[str]
-    unverified_features: list[str]
+    features: list[FeatureAssessment] = []
+    verified_features: list[str]    # benefit features that are present
+    barrier_features: list[str]     # barrier features that are present
+    absent_features: list[str] = [] # benefit features the evidence says are missing
+    unverified_features: list[str]  # no evidence, or evidence too weak / contradictory
+    warnings: list[str] = []

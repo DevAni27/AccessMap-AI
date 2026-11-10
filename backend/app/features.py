@@ -63,7 +63,8 @@ _FEATURE_LIST = [
     Feature(
         "accessible_entrance", "Step-free entrance",
         "A step-free way into the building for wheelchair users: a level entrance, "
-        "a ramped entrance, or an entrance served by a lift.",
+        "a ramped entrance, or an entrance served by a lift. Do NOT use it for wheelchairs "
+        "being available to borrow, or for vague claims like 'accessible' or 'easy access'.",
         "benefit", "entrance"),
     Feature(
         "stairs", "Stairs on the route",

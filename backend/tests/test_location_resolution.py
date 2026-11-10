@@ -107,4 +107,48 @@ def test_throttle_spaces_calls_apart():
     throttle.wait()
     throttle.wait()
     assert time.monotonic() - start >= 0.4 - 0.02  # first call is free, then 2 gaps
-    
+
+
+# ── choosing the right candidate (Ruby Hall Clinic: metro station vs hospital) ──
+
+def candidate(osm_type, osm_id, category, type_, name="Ruby Hall Clinic"):
+    return nominatim_result(osm_type=osm_type, osm_id=osm_id, category=category, type=type_,
+                            display_name=f"{name}, Bund Garden Road, Pune")
+
+
+RUBY_HALL = [   # the real Nominatim answer for "Ruby Hall Clinic Pune"
+    candidate("node", 7944584984, "railway", "station"),
+    candidate("way", 53098668, "amenity", "clinic"),
+    candidate("way", 224969009, "amenity", "hospital"),
+    candidate("node", 11097527712, "railway", "stop"),
+    candidate("node", 10172977877, "amenity", "hospital"),
+]
+
+
+def test_metro_station_is_skipped_in_favour_of_the_hospital():
+    assert lr.choose_candidate(RUBY_HALL)["osm_id"] == 53098668      # first mapped candidate
+
+
+def test_first_mapped_candidate_wins_over_better_ranked_unmapped_ones():
+    results = [candidate("way", 1, "building", "yes"), candidate("way", 2, "shop", "mall")]
+    assert lr.choose_candidate(results)["osm_id"] == 2
+
+
+def test_without_any_mapped_candidate_transport_objects_are_still_skipped():
+    results = [candidate("node", 1, "railway", "station"), candidate("way", 2, "building", "yes")]
+    assert lr.choose_candidate(results)["osm_id"] == 2
+
+
+def test_if_everything_is_transport_we_fall_back_to_the_top_result():
+    results = [candidate("node", 1, "railway", "station"), candidate("node", 2, "railway", "stop")]
+    assert lr.choose_candidate(results)["osm_id"] == 1
+
+
+def test_single_candidate_is_used_even_if_unmapped():
+    assert lr.choose_candidate([candidate("way", 5, "building", "yes")])["osm_id"] == 5
+
+
+def test_resolve_location_uses_the_hospital_not_the_station(monkeypatch):
+    monkeypatch.setattr(lr.requests, "get", lambda *a, **k: FakeResponse(RUBY_HALL))
+    out = lr.resolve_location(LocationResolutionInput(query="Ruby Hall Clinic Pune"))
+    assert out.osm_ref == "W53098668" and out.category == "hospital" and out.name == "Ruby Hall Clinic"
